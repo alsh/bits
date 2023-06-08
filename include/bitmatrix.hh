@@ -25,7 +25,8 @@ struct bitmatrix
     using _matrix_t = std::array<Row_type, Rows_number>;
     alignas(alignof(Row_type) * Rows_number) _matrix_t _matrix;
 
-    bitmatrix( const Row_type (&rows)[Rows_number] )
+    bitmatrix() = default;
+    explicit bitmatrix( const Row_type (&rows)[Rows_number] )
     {
         std::copy(std::ranges::cbegin(rows),
                   std::ranges::cend(rows),
@@ -41,6 +42,8 @@ struct bitmatrix
     }
 
     bitmatrix(const bitmatrix& other) = default;
+
+    bool operator==(const bitmatrix& other) const = default;
 
     bitmatrix& operator|=( const bitmatrix& __restrict other )
     {
@@ -70,36 +73,27 @@ struct bitmatrix
             row.packed_result[i] = get_row(i) & mask;
         return row.result;
     }
-    
+
+    // Calculate partial result for result[i,j] |= X[i,n] & Y[n,j]
     static _matrix_t _partial_multiply_add( _matrix_t& __restrict result,
                                             const _matrix_t& X,
                                             const _matrix_t& Y,
                                             std::size_t n )
     {
-        _matrix_t Xcopy;
-        std::ranges::transform(X, std::ranges::begin(Xcopy),
-                               [=](auto x){ return x >> n; });
-        _matrix_t Ycopy = Y;
+        Row_type zeros = 0;
+        Row_type ones = ~zeros;
         
-        // for (auto i = 0; i < Rows_number; i++)
-        //     Xcopy[i] >>= n;
-
         _matrix_t X_n;
-        for (auto i = 0; i < Rows_number; i++)
-            X_n[i] = 0 - (Xcopy[i] & 1);
+        for (std::size_t i = 0; i < Rows_number; i++)
+            X_n[i] = std::bitset<Rows_number>(X[i])[n] ? ones : zeros;
+        // While X holds bits for X[i,j], X_n holds values for X[i,n]
+        // in each row.
 
-        for (unsigned i = 0; i < Rows_number; i++)
-            result[i] |= X_n[i] & Ycopy[n];
+        // Produce result[i,j] |= X[i,n] & Y[n,j]
+        for (std::size_t i = 0; i < Rows_number; i++)
+            result[i] |= X_n[i] & Y[n];
 
         return result;
-        
-        // Row_type mask = 1 << n;
-        // for (unsigned i = 0; i < Rows_number; i++) {
-        //     Row_type Xin = (X._array[i] & mask) ? -1 : 0;
-        //     Row_type Yn_ = Y._array[n];
-        //     result._array[i] |= Xin & Yn_;
-        // }
-        // return result;
     }
 
     bitmatrix& multiply( const bitmatrix& other )
@@ -127,10 +121,9 @@ std::ostream& operator<< (std::ostream& stream, const bitmatrix<Row_type>& matri
     const char digits[2] = {'0', '1'};
     char row_string[rows_number*2 + 2] = {0};
 
-    for(auto i=0; i < rows_number; i++) {
-        for (auto j = 0; j < rows_number; j++) {
-            row_string[j*2] = digits[matrix.at(i, j)];
-            row_string[j*2+1] = ' ';
+    for(std::size_t i=0; i < rows_number; i++) {
+        for (std::size_t j = 0; j < rows_number; j++) {
+            row_string[j] = digits[matrix.at(i, j)];
         }
         stream << row_string << std::endl;
     }
