@@ -2,108 +2,137 @@
 #define BITMATRIX
 
 #include <bitset>
-#include <limits>
 #include <algorithm>
 #include <array>
 #include <ranges>
-#include <iostream>
-#include <cstdint>
+#include <ostream>
 
-template< typename T >
+template< std::size_t Size >
 struct bitmatrix
 {
-    using Row_type = T;
-    
-    static constexpr
-    std::size_t Row_bits_size = std::numeric_limits<Row_type>::digits;
-    
-    static constexpr
-    std::size_t Rows_number = Row_bits_size;
+    using row_type = std::bitset<Size>;
+    using _matrix_t = std::array<row_type, Size>;
 
-    using _row_packed_t = std::bitset<Row_bits_size>;
+    alignas(alignof(row_type) * Size) _matrix_t _matrix;
 
-    using _matrix_t = std::array<Row_type, Rows_number>;
-    alignas(alignof(Row_type) * Rows_number) _matrix_t _matrix;
-
+    // Default constructor
     bitmatrix() = default;
-    explicit bitmatrix( const Row_type (&rows)[Rows_number] )
+
+    template< typename T >
+    explicit bitmatrix( const T (&rows)[Size] )
     {
         std::copy(std::ranges::cbegin(rows),
                   std::ranges::cend(rows),
                   std::ranges::begin(_matrix));
     }
 
-    template< typename Range >
-    bitmatrix( const Range &rows )
+    template< std::ranges::range R >
+    bitmatrix( const R &rows )
     {
         std::copy(std::ranges::cbegin(rows),
                   std::ranges::cend(rows),
                   std::ranges::begin(_matrix));
     }
 
+    // Default copy constructor
     bitmatrix(const bitmatrix& other) = default;
+    // Default move constructor
+    bitmatrix(bitmatrix&& other) = default;
 
+    // Default assignment operators
+    bitmatrix& operator=(const bitmatrix& other) = default;
+    // Default move assignment operators
+    bitmatrix& operator=(bitmatrix&& other) = default;
+    
+    // Default comparison operators
     bool operator==(const bitmatrix& other) const = default;
+    bool operator!=(const bitmatrix& other) const = default;
 
     bitmatrix& operator|=( const bitmatrix& __restrict other )
     {
-        for (auto i = 0; i < Rows_number; i++)
+        for (auto i = 0; i < Size; i++)
             _matrix[i] |= other._matrix[i];
         return *this;
     }
 
-    constexpr Row_type get_row( std::size_t row ) const
+    bitmatrix& operator&=( const bitmatrix& __restrict other )
+    {
+        for (auto i = 0; i < Size; i++)
+            _matrix[i] &= other._matrix[i];
+        return *this;
+    }
+
+    // operator |
+    friend bitmatrix operator|( const bitmatrix& __restrict lhs,
+                                const bitmatrix& __restrict rhs )
+    {
+        bitmatrix result = lhs;
+        result |= rhs;
+        return result;
+    }
+
+    // operator &
+    friend bitmatrix operator&( const bitmatrix& __restrict lhs,
+                                const bitmatrix& __restrict rhs )
+    {
+        bitmatrix result = lhs;
+        result &= rhs;
+        return result;
+    }
+
+    // operator +, alias for operator |
+    friend bitmatrix operator+( const bitmatrix& __restrict lhs,
+                                const bitmatrix& __restrict rhs )
+    {
+        return lhs | rhs;
+    }
+
+    // operator *, used for multiplication
+    friend bitmatrix operator*( const bitmatrix& __restrict lhs,
+                                const bitmatrix& __restrict rhs )
+    {
+        bitmatrix result = lhs;
+        result.multiply(rhs);
+        return result;
+    }
+    
+
+    constexpr row_type row( std::size_t row ) const
     {
         return _matrix[row];
     }
 
     constexpr bool at( std::size_t row, std::size_t col ) const
     {
-        return (_matrix[row] >> col) & 1;
+        return _matrix[row][col];
     }
 
-    Row_type _get_column(std::size_t n) const
+    typename row_type::reference at( std::size_t row, std::size_t col )
     {
-        Row_type mask = 1 << n;
-        union {
-            Row_type result;
-            _row_packed_t packed_result;
-        } row { .result = 0 };
-        for( std::size_t i=0; i < row.packed_result.size(); i++ )
-            row.packed_result[i] = get_row(i) & mask;
-        return row.result;
+        return _matrix[row][col];
     }
 
-    // Calculate partial result for result[i,j] |= X[i,n] & Y[n,j]
-    static _matrix_t _partial_multiply_add( _matrix_t& __restrict result,
-                                            const _matrix_t& X,
-                                            const _matrix_t& Y,
-                                            std::size_t n )
+    row_type column(std::size_t n) const
     {
-        Row_type zeros = 0;
-        Row_type ones = ~zeros;
-        
-        _matrix_t X_n;
-        for (std::size_t i = 0; i < Rows_number; i++)
-            X_n[i] = std::bitset<Rows_number>(X[i])[n] ? ones : zeros;
-        // While X holds bits for X[i,j], X_n holds values for X[i,n]
-        // in each row.
-
-        // Produce result[i,j] |= X[i,n] & Y[n,j]
-        for (std::size_t i = 0; i < Rows_number; i++)
-            result[i] |= X_n[i] & Y[n];
-
-        return result;
+        row_type column = 0;
+        for (std::size_t i = 0; i < Size; i++)
+            column[i] = _matrix[i][n];
+        return column;
     }
 
     bitmatrix& multiply( const bitmatrix& other )
     {
+        const row_type zeros = row_type().reset();
+        const row_type ones = row_type().set();
+
         const _matrix_t& X = _matrix;
         const _matrix_t& Y = other._matrix;
         _matrix_t result{ 0 };
 
-        for (std::size_t i=0; i < Rows_number; i++)
-            _partial_multiply_add( result, X, Y, i );
+        
+        for (std::size_t n=0; n < Size; n++)
+            for (std::size_t i = 0; i < Size; i++)
+                result[i] |= (X[i][n] ? ones : zeros) & Y[n];
 
         _matrix = result;
         return *this;
@@ -113,16 +142,14 @@ struct bitmatrix
     friend std::ostream& operator<< (std::ostream&, const bitmatrix&);
 };
 
-template< typename Row_type >
-std::ostream& operator<< (std::ostream& stream, const bitmatrix<Row_type>& matrix)
-{
-    constexpr std::size_t rows_number = bitmatrix<Row_type>::Rows_number;
-    
+template< std::size_t Size >
+std::ostream& operator<< (std::ostream& stream, const bitmatrix<Size>& matrix)
+{    
     const char digits[2] = {'0', '1'};
-    char row_string[rows_number*2 + 2] = {0};
+    char row_string[Size + 2] = {0};
 
-    for(std::size_t i=0; i < rows_number; i++) {
-        for (std::size_t j = 0; j < rows_number; j++) {
+    for(std::size_t i=0; i < Size; i++) {
+        for (std::size_t j = 0; j < Size; j++) {
             row_string[j] = digits[matrix.at(i, j)];
         }
         stream << row_string << std::endl;
