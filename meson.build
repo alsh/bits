@@ -19,7 +19,7 @@ build_args = [
 ]
 
 public_headers = include_directories('include')
-project_dep = declare_dependency(
+bits_dep = declare_dependency(
   include_directories: public_headers
 )
 

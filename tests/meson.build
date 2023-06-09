@@ -1,9 +1,7 @@
 
 add_languages('cpp')
 
-subproject('doctest')
-
-doctest_dep = dependency('doctest')
+doctest_dep = dependency('doctest', required: true)
 
 test1_exe = executable(
   'test_bitmatrix',
