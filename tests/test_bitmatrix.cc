@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <iostream>
+#include <string>
 #include <random>
 #include <ranges>
 #include <cassert>
@@ -10,28 +11,38 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest.h>
 
-const std::size_t size = 8;
-using bitmatrix8 = bitmatrix<size>;
-
-// Helper function to generate a random bitmatrix
-bitmatrix8 random_bitmatrix()
+// Helper function to generate a random bits::small_matrix
+template<std::size_t Size>
+bits::small_matrix<Size> random_small_matrix()
 {
-    // A code to create an array of uint8_t with random numbers using modern C++
     std::random_device rd;
-    std::uniform_int_distribution<uint8_t> dist(0, 255);
-    uint8_t random_array[size];
+    std::uniform_int_distribution<uint8_t> dist(0, 1);
 
-    std::ranges::generate(random_array, [&]() { return dist(rd); });
-    return bitmatrix8(random_array);
+    std::string random_string(Size, '0');
+    std::array<std::bitset<Size>, Size> random_bitset_array;
+    
+    for (auto &bitset : random_bitset_array)
+    {
+        std::ranges::generate(random_string, [&]() { return dist(rd) + '0'; });
+        bitset = std::bitset<Size>(random_string);
+    }        
+
+    return bits::small_matrix<Size>(random_bitset_array);
 }
 
-TEST_CASE("Identity test")
-{
-    bitmatrix8 identity_matrix({ 1, 2, 4, 8, 16, 32, 64, 128 });
+#define TEST_MATRIX_TYPES                       \
+    bits::small_matrix<8>, bits::small_matrix<16>, bits::small_matrix<32>, bits::small_matrix<64>
 
-    bitmatrix8 random_matrix = random_bitmatrix();
-    bitmatrix8 result1 = random_matrix;
-    bitmatrix8 result2 = identity_matrix;
+TEST_CASE_TEMPLATE("Identity test", Bitmatrix, TEST_MATRIX_TYPES)
+{
+    constexpr std::size_t size = Bitmatrix().size();
+    Bitmatrix identity_matrix = Bitmatrix::identity();
+
+    auto random_Bitmatrix = random_small_matrix<size>;
+
+    Bitmatrix random_matrix = random_Bitmatrix();
+    Bitmatrix result1 = random_matrix;
+    Bitmatrix result2 = identity_matrix;
 
     SUBCASE("In-place multiplication by identity matrix")
     {
@@ -52,25 +63,27 @@ TEST_CASE("Identity test")
     }
 }
 
-bitmatrix8 dumb_multiply(const bitmatrix8 &a, const bitmatrix8 &b)
+template< std::size_t Size >
+bits::small_matrix<Size> dumb_multiply(const bits::small_matrix<Size> &a, const bits::small_matrix<Size> &b)
 {
-    bitmatrix8 result;
-    for (std::size_t i = 0; i < size; ++i)
-        for (std::size_t j = 0; j < size; ++j)
-            for (std::size_t k = 0; k < size; ++k)
+    bits::small_matrix<Size> result;
+    for (std::size_t i = 0; i < Size; ++i)
+        for (std::size_t j = 0; j < Size; ++j)
+            for (std::size_t k = 0; k < Size; ++k)
                 result.at(i, j) = result.at(i, j) || (a.at(i, k) && b.at(k, j));
     return result;
 }
 
-TEST_CASE("Check multiplication")
+TEST_CASE_TEMPLATE("Multiplication functionality", Bitmatrix, TEST_MATRIX_TYPES)
 {
-    bitmatrix8 input1 = random_bitmatrix();
-    bitmatrix8 input2 = random_bitmatrix();
+    constexpr std::size_t size = Bitmatrix().size();
+    Bitmatrix input1 = random_small_matrix<size>();
+    Bitmatrix input2 = random_small_matrix<size>();
 
     SUBCASE("In-place multiplication")
     {
-        bitmatrix8 result1 = input1;
-        bitmatrix8 result2;
+        Bitmatrix result1 = input1;
+        Bitmatrix result2;
 
         result1.multiply(input2);
         result2 = dumb_multiply(input1, input2);
@@ -80,9 +93,28 @@ TEST_CASE("Check multiplication")
 
     SUBCASE("Multiplication")
     {
-        bitmatrix8 result1 = input1 * input2;
-        bitmatrix8 result2 = dumb_multiply(input1, input2);
+        Bitmatrix result1 = input1 * input2;
+        Bitmatrix result2 = dumb_multiply(input1, input2);
 
         CHECK(result1 == result2);
     }
+}
+
+TEST_CASE("Improper initialization")
+{
+    using bitmatrix8 = bits::small_matrix<8>;
+
+    bitmatrix8 too_small_initializer({1, 2, 3, 4});
+    CHECK(too_small_initializer == bitmatrix8({1, 2, 3, 4, 0, 0, 0, 0}));
+
+    bitmatrix8 too_big_initializer({1, 2, 3, 4, 5, 6, 7, 8, 9});
+    CHECK(too_big_initializer == bitmatrix8({1, 2, 3, 4, 5, 6, 7, 8}));
+
+    std::array<uint8_t, 4> small_initializer = {1, 2, 3, 4};
+    bitmatrix8 too_small_ranged_initializer2(small_initializer);
+    CHECK(too_small_ranged_initializer2 == bitmatrix8({1, 2, 3, 4, 0, 0, 0, 0}));
+    
+    std::array<uint8_t, 9> big_initializer = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+    bitmatrix8 too_big_ranged_initializer(big_initializer);
+    CHECK(too_big_ranged_initializer == bitmatrix8({1, 2, 3, 4, 5, 6, 7, 8}));
 }
