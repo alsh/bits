@@ -1,14 +1,14 @@
 name: ci_meson
 
-on:
-  push:
-    paths:
-      - "include/*"
-      - "tests/*"
-  pull_request:
-    paths:
-      - "include/*"
-      - "tests/*"
+on: [workflow_dispatch]
+#  push:
+#    paths:
+#      - "include/*"
+#      - "tests/*"
+#  pull_request:
+#    paths:
+#      - "include/*"
+#      - "tests/*"
       
 jobs:
 
